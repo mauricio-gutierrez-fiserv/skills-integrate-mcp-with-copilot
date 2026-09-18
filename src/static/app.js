@@ -3,6 +3,33 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const loginButton = document.getElementById("login-button");
+  const logoutButton = document.getElementById("logout-button");
+  const loginPrompt = document.getElementById("login-prompt");
+  const sessionStatus = document.getElementById("session-status");
+  const loginDialog = document.getElementById("login-dialog");
+  const loginForm = document.getElementById("login-form");
+  let teacherCredentials = sessionStorage.getItem("teacherCredentials");
+
+  function setTeacherSession(username) {
+    sessionStatus.textContent = `Logged in as ${username}`;
+    loginButton.classList.add("hidden");
+    logoutButton.classList.remove("hidden");
+    loginPrompt.classList.add("hidden");
+    signupForm.classList.remove("hidden");
+    fetchActivities();
+  }
+
+  function clearTeacherSession() {
+    teacherCredentials = null;
+    sessionStorage.removeItem("teacherCredentials");
+    sessionStatus.textContent = "Student view";
+    loginButton.classList.remove("hidden");
+    logoutButton.classList.add("hidden");
+    loginPrompt.classList.remove("hidden");
+    signupForm.classList.add("hidden");
+    fetchActivities();
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -80,6 +107,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/unregister?email=${encodeURIComponent(email)}`,
         {
           method: "DELETE",
+          headers: { Authorization: `Basic ${teacherCredentials}` },
         }
       );
 
@@ -124,6 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/signup?email=${encodeURIComponent(email)}`,
         {
           method: "POST",
+          headers: { Authorization: `Basic ${teacherCredentials}` },
         }
       );
 
@@ -154,6 +183,57 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error signing up:", error);
     }
   });
+
+  loginButton.addEventListener("click", () => loginDialog.showModal());
+
+  document.getElementById("cancel-login").addEventListener("click", () => {
+    loginDialog.close();
+    loginForm.reset();
+  });
+
+  logoutButton.addEventListener("click", clearTeacherSession);
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+    const encodedCredentials = btoa(`${username}:${password}`);
+
+    try {
+      const response = await fetch("/auth/me", {
+        headers: { Authorization: `Basic ${encodedCredentials}` },
+      });
+
+      if (!response.ok) {
+        throw new Error("Invalid teacher credentials");
+      }
+
+      const teacher = await response.json();
+      teacherCredentials = encodedCredentials;
+      sessionStorage.setItem("teacherCredentials", encodedCredentials);
+      loginDialog.close();
+      loginForm.reset();
+      setTeacherSession(teacher.username);
+    } catch (error) {
+      messageDiv.textContent = error.message;
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+    }
+  });
+
+  if (teacherCredentials) {
+    fetch("/auth/me", {
+      headers: { Authorization: `Basic ${teacherCredentials}` },
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Expired session");
+        }
+        return response.json();
+      })
+      .then((teacher) => setTeacherSession(teacher.username))
+      .catch(clearTeacherSession);
+  }
 
   // Initialize app
   fetchActivities();
